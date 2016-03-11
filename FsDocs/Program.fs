@@ -26,20 +26,22 @@ type File =
     { FileInfo : FileInfo
       Title : string
       UniqueId : Guid }
+    
     static member Create(fi : FileInfo) = 
         if fi.Name.Contains(" ") then error <| sprintf "File name cannot contain spaces: %A" fi
         { FileInfo = fi
           Title = fi.Name.Replace("-", " ")
           UniqueId = Guid.NewGuid() }
-    member this.GetBreadCrumbs(rootDir : DirectoryInfo) =
+    
+    member this.GetBreadCrumbs(rootDir : DirectoryInfo) = 
         let segments = new ResizeArray<string>()
         let mutable currentDir = this.FileInfo.Directory
         while currentDir.FullName <> rootDir.FullName do
             segments.Add(currentDir.Name)
             currentDir <- currentDir.Parent
         segments.ToArray()
-    member this.GetUrl(rootDir : DirectoryInfo) =
-        String.Join("/", rootDir |> this.GetBreadCrumbs)
+    
+    member this.GetUrl(rootDir : DirectoryInfo) = String.Join("/", rootDir |> this.GetBreadCrumbs)
 
 type FileItem = 
     | MarkDownFile of File
@@ -122,15 +124,34 @@ module DirWalker =
                 lastDirItem.Children.Add(Dir d1)
                 lastDirItem <- d1
         rootDirItem
-
-    let generateToc(dirItem : DirItem) (selectedFolder : Guid) (selectedFile : Guid) =
+    
+    /// Generate TOC entry for the given page and folder such that the given page is 
+    /// selected and the folder is in open mode.
+    /// We generate the below kind of structure:
+    /// <ul>
+    ///     <li>Entry 1 </li>
+    ///     <li>Entry 2 </li>
+    /// </ul>
+    let generateToc (dirItem : DirItem) (selectedFolder : Guid) (selectedFile : Guid) = 
         let fragments = new ResizeArray<string>()
-        for c in dirItem.Children do
-            match c with
-            | MarkDownFile(f) -> 
-                if f.UniqueId = selectedFile then
-                    fragments.Add("""<>""")
-            | 
+        
+        let rec recurse (d) = 
+            for c in d.Children do
+                match c with
+                | MarkDownFile(f) -> 
+                    // Set the selected item CSS element on the list item
+                    if f.UniqueId = selectedFile then 
+                        fragments.Add(sprintf """<li class="selected">%s</li>""" f.FileInfo.Name)
+                    else fragments.Add(sprintf """<li>%s</li>""" f.FileInfo.Name)
+                | Dir(d) -> 
+                    if d.UniqueId = selectedFolder then fragments.Add("""<ul class="selected">""")
+                    else fragments.Add("""<ul>""")
+                    /// Function is not tail recursive but that should not be a major 
+                    /// issue as we don't expect infinite recursion  
+                    recurse d
+                    fragments.Add("</ul>")
+                | _ -> ()
+        recurse dirItem
 
 [<EntryPoint>]
 let main argv = 
